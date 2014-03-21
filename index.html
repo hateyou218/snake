@@ -1,0 +1,595 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<title>Snake</title>
+	<style type="text/css">
+		html, body {
+			font-family: Microsoft JhengHei, sans-serif;
+			margin: 0;
+			padding: 0;
+		}
+		#playground {
+			position: relative;
+			margin-top: 20px;
+			width: 1400px;
+			height: 660px;
+			background: white;
+			overflow: hidden;
+		}
+		.description {
+			position: relative;
+			color: #71A1B0;
+			z-index: 5;
+		}
+		.snake {
+			position: absolute;
+			width: 20px;
+			height: 20px;
+			z-index: 1;
+			background: green;
+		}
+		.obstacle {
+			position: absolute;
+			background: black;
+		}
+		.fruit {
+			position: absolute;
+			width: 20px;
+			height: 20px;
+			background: blue;
+		}
+		#main {
+			margin-top: 120px;
+		}
+		.head {
+			font-size: 150px;
+			font-weight: bold;
+			margin: 20px;
+		}
+		.btn {
+			font-size: 60px;
+			width: 540px;
+			height: 72px;
+			border: none;
+			color: white;
+			background: #7BEDB2;
+			-webkit-border-radius: 3px;
+			border-radius: 3px;
+			margin: 10px;
+		}
+		.btn:hover {
+			background: #69C797;
+		}
+		.btn:active {
+			background: #4E9671;
+			outline: none;
+		}
+		.btn:focus {
+			outline: none;
+		}
+		.toolbar {
+			font-size: 20px;
+			font-weight: bold;
+		}
+		#command {
+			position: relative;
+			display: none;
+			margin-left: 100px;
+			margin-top: 6px;
+		}
+		#score {
+			position: relative;
+			display: none;
+			margin-top: -24px;
+		}
+		#highscore {
+			position: relative;
+			display: none;
+			margin-right: 100px;
+			margin-top: -26px;
+		}
+	</style>
+	<script type="text/javascript" src="javascript/cookie.js"></script>
+</head>
+<body>
+	<center>
+		<div id="main">
+			<div class="head">Snake</div>
+			<button class="btn" onclick="freeMode()">Free Mode</button><br>
+			<button class="btn" onclick="challengeMode()">Challenge Mode</button><br>
+		</div>
+		<div id="playground" style="display:none"></div>
+	</center>
+	<div class="toolbar" id="command">ESC to pause/resume</div>
+	<div class="toolbar" id="highscore" align="right"><p style="text-align:right"></p></div>
+	<div class="toolbar" id="score" align="center"><p style="text-align:center"></p></div>
+	<script type="text/javascript">
+		var Direction = {
+			None: 0,
+			Up: 1,
+			Down: 2,
+			Left: 3,
+			Right: 4
+		};
+		var GameState = {
+			Off: 0,
+			Pause: 1,
+			Normal: 2,
+			Challenge: 3
+		};
+		var stage = [
+			/* Level 1 */
+			[{left:100,  top:100, width:20,  height:140 },
+			 {left:120,  top:100, width:120, height:20  },
+			 {left:100,  top:420, width:20,  height:140 },
+			 {left:120,  top:540, width:120, height:20  },
+			 {left:1280, top:100, width:20,  height:140 },
+			 {left:1160, top:100, width:120, height:20  },
+			 {left:1280, top:420, width:20,  height:140 },
+			 {left:1160, top:540, width:120, height:20  }],
+			/* Level 2 */
+			[{left:120,  top:120, width:20,  height:420 },
+			 {left:1260, top:120, width:20,  height:420 },
+			 {left:180,  top:160, width:1040,height:20  },
+			 {left:180,  top:480, width:1040,height:20  }],
+			/* Level 3 */
+			[{left:0,    top:320, width:1400, height:20 },
+			 {left:680,  top:0,   width:20,   height:660}],
+			/* Level 4 */
+			[{left:0,    top:200, width:220,  height:20 },
+			 {left:200,  top:0,   width:20,   height:200},
+			 {left:0,    top:440, width:220,  height:20 },
+			 {left:200,  top:460, width:20,   height:200},
+			 {left:1180, top:200, width:220,  height:20 },
+			 {left:1180, top:0,   width:20,   height:200}]
+		];
+		var threshold = [15, 25, 40, 60];
+		var width     = 1400,
+			height    = 660,
+			base      = 20,
+			step      = 10,
+			game      = GameState.Off,
+			direction = new Array(),
+			TID, change = Direction.None, headState, option, level, fruitCount, cur_score, speed;
+
+		window.onload = function() {
+			var hs = getCookie("highscore");
+			if (hs != "")
+				setCookie("highscore", hs, 10);
+		}
+
+		function init() {
+			direction = new Array();
+			direction[0] = Direction.None;
+			change = Direction.None;
+			headState = 0;
+			fruitCount = 0;
+			speed = 60;
+		}
+
+		function freeMode() {
+			init();
+			var body = document.getElementsByTagName("body");
+			body[0].style.background = "#88EBE9";
+			var mainView    = document.getElementById("main"),
+				playground  = document.getElementById("playground"),
+				command     = document.getElementById("command"),
+				score_s     = document.getElementById("score"),
+				highscore_s = document.getElementById("highscore");
+
+			mainView.style.display = "none";
+			command.style.display = "block";
+			// Set score
+			score_s.style.display = "block";
+			score_s.innerHTML = "SCORE: 0";
+			cur_score = 0;
+			// Set highscore
+			highscore_s.style.display = "block";
+			var hs = Number(getCookie("highscore"));
+			if (hs == NaN) hs = 0;
+			highscore_s.innerHTML = "HIGHSCORE: " + hs;
+			// Set playground
+			playground.style.display = "block";
+			playground.innerHTML = "<div class='snake' style='left: 40px; top: 40px;'></div>";
+			addFruit(playground);
+			addFruit(playground);
+			addFruit(playground);
+			playground.innerHTML +=	"<div id='start' class='description' style='margin-top: 150'>" +
+									"<div class='head'>ARROW KEY TO START</div>" +
+									"</div>";
+			option = 1;
+			document.onkeydown = checkKey;
+		}
+
+		function loadStage(level, playground) {
+			if (level >= stage.length) return true;
+			for (var i = 0; i < stage[level].length; ++i) {
+				playground.innerHTML += "<div class='obstacle' style='" +
+								   		"left:"   + stage[level][i].left   + "px;" +
+								   		"top:"    + stage[level][i].top    + "px;" +
+								   		"width:"  + stage[level][i].width  + "px;" +
+								   		"height:" + stage[level][i].height + "px;" + 
+								   		"'></div>";
+			}
+			return false;
+		}
+
+		function challengeMode() {
+			init();
+			if (level == undefined) level = 0;
+			var body = document.getElementsByTagName("body");
+			body[0].style.background = "#88EBE9";
+			var mainView   = document.getElementById("main"),
+				playground = document.getElementById("playground"),
+				command    = document.getElementById("command");
+
+			mainView.style.display = "none";
+			command.style.display = "block";
+			playground.style.display = "block";
+			playground.innerHTML = "<div class='snake' style='left: 40px; top: 40px;'></div>";
+			loadStage(level, playground);
+			addFruit(playground);
+			addFruit(playground);
+			addFruit(playground);
+			playground.innerHTML +=	"<div id='start' class='description' style='margin-top: 90'>" +
+									"<div class='head'>STAGE " + (level+1) + "</div>" +
+									"<div class='head'>ARROW KEY TO START</div>" +
+									"</div>";
+			option = 2;
+			document.onkeydown = checkKey;
+		}
+
+		function mainMenu() {
+			var body = document.getElementsByTagName("body");
+			body[0].style.background = "white";
+			var mainView    = document.getElementById("main"),
+				playground  = document.getElementById("playground"),
+				command     = document.getElementById("command"),
+				score_s     = document.getElementById("score"),
+				highscore_s = document.getElementById("highscore");
+
+			command.style.display = "none";
+			score_s.style.display = "none";
+			highscore_s.style.display = "none";
+			playground.style.display = "none";
+			mainView.style.display = "block";
+		}
+
+		function playAgain() {
+			if (option == 1) {
+				freeMode();
+			} else if (option == 2) {
+				challengeMode();
+			}
+		}
+
+		function loseView() {
+			clearInterval(TID);
+			document.onkeydown = null;
+			game = GameState.Off;
+
+			var playground = document.getElementById("playground");
+			playground.innerHTML +=	"<div class='description' style='margin-top: 70'>" +
+									"<div class='head'>YOU LOSE</div>" +
+									"<button class='btn' onclick='playAgain()'>PLAY AGAIN</button><br>" +
+									"<button class='btn' onclick='mainMenu()'>BACK TO MENU</button><br>" +
+									"</div>";
+		}
+
+		function pauseView() {
+			var playground = document.getElementById("playground");
+			playground.innerHTML += "<div id='pause' class='description' style='margin-top: 70'>" +
+									"<div class='head'>ESC TO CONTINUE</div>" +
+									"<button class='btn' onclick='document.onkeydown=null;game=GameState.Off;mainMenu()'>QUIT</button><br>" +
+									"</div>";
+		}
+
+		function nextLevelView() {
+			level++;
+			var playground = document.getElementById("playground");
+			if (level >= stage.length) {
+				// Win
+				game = GameState.Off;
+				level = 0;
+				playground.innerHTML +=	"<div class='description' style='margin-top: 70'>" +
+										"<div style='font-size: 80px'>CONGRATS! YOU COMPLETE ALL STAGES!!</div>" +
+										"<button class='btn' onclick='playAgain()'>PLAY AGAIN</button><br>" +
+										"<button class='btn' onclick='mainMenu()'>BACK TO MENU</button><br>" +
+										"</div>";				
+			} else {
+				game = GameState.Off;
+				playground.innerHTML +=	"<div class='description' style='margin-top: 70'>" +
+										"<div class='head'>YOU COMPLETE STAGE " + level + "</div>" +
+										"<button class='btn' onclick='playAgain()'>NEXT LEVEL</button><br>" +
+										"<button class='btn' onclick='mainMenu()'>QUIT</button><br>" +
+										"</div>";
+			}
+		}
+
+		function eatFruit(x, y) {
+			var fruits =document.getElementsByClassName("fruit");
+			for (var i = 0; i < fruits.length; ++i) {
+				var f_x = Number(fruits[i].style.left.replace("px", "")),
+					f_y = Number(fruits[i].style.top.replace("px", ""));
+
+				if (x == f_x && y == f_y) {
+					fruits[i].remove();
+					return true;
+				}
+			}
+			return false;
+		}
+
+		function hitTheWall(o_x, o_y, o_w, o_h, x, y) {
+			var det_x = x + base/2,
+				det_y = y + base/2;
+			if (det_x >= o_x && det_x <= (o_x + o_w) && det_y >= o_y && det_y <= (o_y + o_h)) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+				
+		function move() {
+			var snake = document.getElementsByClassName("snake");
+
+			for (var i = 0; i < direction.length; ++i) {
+				var x = Number(snake[i].style.left.replace("px", "")),
+					y = Number(snake[i].style.top.replace("px", ""));
+				switch (direction[i]) {
+					case Direction.Up:
+						y -= step;
+						break;
+					case Direction.Down:
+						y += step;
+						break;
+					case Direction.Left:
+						x -= step;
+						break;
+					case Direction.Right:
+						x += step;
+						break;
+					default:
+						break;
+				}
+				if (game == GameState.Challenge) {
+					if (i == 0) {
+						var obstacles = document.getElementsByClassName("obstacle");
+						for (var ii = 0; ii < obstacles.length; ++ii) {
+							var o_x = Number(obstacles[ii].style.left.replace("px", "")),
+								o_y = Number(obstacles[ii].style.top.replace("px", "")),
+								o_w = Number(obstacles[ii].style.width.replace("px", "")),
+								o_h = Number(obstacles[ii].style.height.replace("px", ""));
+							if (hitTheWall(o_x, o_y, o_w, o_h, x, y) == true) {
+								// Crash to the wall
+								level = 0;
+								loseView();
+								return;
+							}
+						}
+					}
+					if (x < 0) {
+						x += width;
+					} else if ((x + step) > width) {
+						x = 0;
+					}
+					if (y < 0) {
+						y += height;
+					} else if ((y + step) > height) {
+						y = 0;
+					}
+				} else if (game == GameState.Normal && i == 0) {
+					var outOfBound = false;
+					switch (direction[0]) {
+						case Direction.Up:
+							if (y < 0) outOfBound = true;
+							break;
+						case Direction.Down:
+							if ((y + base) > height) outOfBound = true;
+							break;
+						case Direction.Left:
+							if (x < 0) outOfBound = true;
+							break;
+						case Direction.Right:
+							if ((x + base) > width) outOfBound = true;
+							break;
+						default:
+							console.log("bump");
+							return;
+					}
+					if (outOfBound == true) {
+						loseView();
+						return;
+					}
+				}
+				// Move
+				snake[i].style.left = (x + "px");
+				snake[i].style.top  = (y + "px");
+			}
+			var head_x = Number(snake[0].style.left.replace("px", "")),
+				head_y = Number(snake[0].style.top.replace("px", ""));
+			for (var i = 1; i < snake.length; ++i) {
+				var body_x = Number(snake[i].style.left.replace("px", "")),
+					body_y = Number(snake[i].style.top.replace("px", ""));
+				if (head_x == body_x && head_y == body_y) {
+					// TODO: Hit itself
+					level = 0;
+					loseView();
+					return;
+				}
+			}
+			if (eatFruit(head_x, head_y) == true) {
+				var playground  = document.getElementById("playground"),
+					score_s     = document.getElementById("score"),
+					highscore_s = document.getElementById("highscore"),
+					len = snake.length;
+
+				direction[len] = direction[len-1];
+				var new_x = Number(snake[len-1].style.left.replace("px", "")),
+					new_y = Number(snake[len-1].style.top.replace("px", ""));
+				switch (direction[len]) {
+					case Direction.Up:
+						new_y += base;
+						break;
+					case Direction.Down:
+						new_y -= base;
+						break;
+					case Direction.Left:
+						new_x += base;
+						break;
+					case Direction.Right:
+						new_x -= base;
+						break;
+					default:
+						console.log("Wrong");
+						break;
+				}
+				addFruit(playground);
+				playground.innerHTML += "<div class='snake' style='" +
+										"left:" + new_x + "px;" +
+										"top:"  + new_y + "px;" +
+										"'></div>";
+
+				fruitCount++;
+				if (fruitCount == 10 || fruitCount == 20 || fruitCount == 30 || fruitCount == 50) {
+					speed -= 10;
+					clearInterval(TID);
+					TID = setInterval(move, speed);
+				}
+				if (game == GameState.Normal) {
+					cur_score += ((1 + Math.floor(fruitCount / 10)) * 10);
+					score_s.innerHTML = "SCORE: " + cur_score;
+					var hs = Number(getCookie("highscore"));
+					if (cur_score > hs) {
+						setCookie("highscore", cur_score + "", 10);
+						highscore_s.innerHTML = "HIGHSCORE: " + cur_score;
+					}
+				} else if (game == GameState.Challenge && fruitCount >= threshold[level]) {
+					clearInterval(TID);
+					document.onkeydown = null;
+					nextLevelView();
+					return;
+				}
+			}
+			// Head change direction
+			if (headState == 1) {
+				for (var i = direction.length-1; i > 0; i--)
+					direction[i] = direction[i-1];
+				if (change != Direction.None) {
+					direction[0] = change;
+					change = Direction.None;
+				}
+				headState = 0;
+			} else {
+				headState++;
+			}
+		}
+
+		function addFruit(playground) {
+			var x_max = width / base,
+				y_max = height / base,
+				obstacles = document.getElementsByClassName("obstacle"),
+				fruits = document.getElementsByClassName("fruit");
+			while (true) {
+				var x = Math.floor(Math.random() * x_max),
+					y = Math.floor(Math.random() * y_max),
+					valid = true,
+					snake = document.getElementsByClassName("snake");
+				x *= base;
+				y *= base;
+				for (var i = 0; i < snake.length; ++i) {
+					var s_x = Number(snake[i].style.left.replace("px", "")),
+						s_y = Number(snake[i].style.top.replace("px", ""));
+					if (x == s_x && y == s_y) {
+						valid = false;
+						break;
+					}
+				}
+				for (var i = 0; i < obstacles.length; ++i) {
+					var o_x = Number(obstacles[i].style.left.replace("px", "")),
+						o_y = Number(obstacles[i].style.top.replace("px", "")),
+						o_w = Number(obstacles[i].style.width.replace("px", "")),
+						o_h = Number(obstacles[i].style.height.replace("px", ""));
+					if (x >= o_x && x < (o_x + o_w) && y >= o_y && y < (o_y + o_h)) {
+						valid = false;
+						break;
+					}
+				}
+				for (var i = 0; i < fruits.length; ++i) {
+					var f_x = Number(fruits[i].style.left.replace("px", "")),
+						f_y = Number(fruits[i].style.top.replace("px", ""));
+					if (x == f_x && y == f_y) {
+						valid = false;
+						break;
+					}
+				}
+				if (valid == true) break;
+			}
+			playground.innerHTML += "<div class='fruit' style='" +
+									"left:" + x + "px;" +
+									"top:"  + y + "px;" +
+									"'></div>";
+		}
+
+		// Check key event
+		function checkKey(e) {
+			e = e || window.event;
+
+			if (e.keyCode == '27') {
+				if (game == GameState.Normal || game == GameState.Challenge) {
+					clearInterval(TID);
+					game = GameState.Pause;
+					pauseView();
+				} else if (game == GameState.Pause) {
+					// Continue
+					if (option == 1)
+						game = GameState.Normal;
+					else if (option == 2)
+						game = GameState.Challenge;
+					var pause = document.getElementById("pause");
+					pause.remove();
+					TID = setInterval(move, speed);
+				}
+			} else if (game != GameState.Pause) {
+				if (e.keyCode == '37') {
+					// Left
+					if (direction[0] == Direction.None || direction[0] == Direction.Up || direction[0] == Direction.Down) {
+						change = Direction.Left;
+					}
+				} else if (e.keyCode == '38') {
+					// Up
+					if (direction[0] == Direction.None || direction[0] == Direction.Left || direction[0] == Direction.Right) {
+						change = Direction.Up;
+					}
+				} else if (e.keyCode == '39') {
+					// Right
+					if (direction[0] == Direction.None || direction[0] == Direction.Up || direction[0] == Direction.Down) {
+						change = Direction.Right;
+					}
+				} else if (e.keyCode == '40') {
+					// Down
+					if (direction[0] == Direction.None || direction[0] == Direction.Left || direction[0] == Direction.Right) {
+						change = Direction.Down;
+					}
+				} 
+			} else {
+				return;
+			}
+			if (game == GameState.Off) {
+				var start = document.getElementById("start");
+				start.remove();
+				if (option == 1) {
+					game = GameState.Normal;
+				} else if (option == 2) {
+					game = GameState.Challenge;
+				} else {
+					return;
+				}
+				direction[0] = change;
+				change = Direction.None;
+				TID = setInterval(move, speed);
+			}
+		}
+	</script>
+</body>
+</html>
