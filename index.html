@@ -550,7 +550,9 @@
 					var pause = document.getElementById("pause");
 					pause.remove();
 					TID = setInterval(move, speed);
-				}
+                } else {
+                    return;
+                }
 			} else if (game != GameState.Pause) {
 				if (e.keyCode == '37') {
 					// Left
@@ -572,7 +574,9 @@
 					if (direction[0] == Direction.None || direction[0] == Direction.Left || direction[0] == Direction.Right) {
 						change = Direction.Down;
 					}
-				} 
+				} else {
+                    return;
+                }
 			} else {
 				return;
 			}
